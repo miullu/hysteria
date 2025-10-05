@@ -1,9 +1,9 @@
-name: "Build master branch"
+name: "Build my branch"
 
 on:
   push:
     branches:
-      - master
+      - masq_unixdomain
 
 jobs:
   build:
