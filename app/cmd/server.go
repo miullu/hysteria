@@ -802,8 +802,6 @@ func (c *serverConfig) fillTrafficLogger(hyConfig *server.Config) error {
 	return nil
 }
 
-// fillMasqHandler must be called after fillConn, as we may need to extract the QUIC
-// port number from Conn for MasqTCPServer.
 func (c *serverConfig) fillMasqHandler(hyConfig *server.Config) error {
 	var handler http.Handler
 	switch strings.ToLower(c.Masquerade.Type) {
@@ -822,7 +820,7 @@ func (c *serverConfig) fillMasqHandler(hyConfig *server.Config) error {
 		if err != nil {
 			return configError{Field: "masquerade.proxy.url", Err: err}
 		}
-		if u.Scheme != "http" && u.Scheme != "https" {
+		if u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "unix" {
 			return configError{Field: "masquerade.proxy.url", Err: fmt.Errorf("unsupported protocol scheme \"%s\"", u.Scheme)}
 		}
 		transport := http.DefaultTransport
@@ -831,7 +829,6 @@ func (c *serverConfig) fillMasqHandler(hyConfig *server.Config) error {
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: true,
 				},
-				// use default configs from http.DefaultTransport
 				Proxy: http.ProxyFromEnvironment,
 				DialContext: (&net.Dialer{
 					Timeout:   30 * time.Second,
@@ -842,6 +839,29 @@ func (c *serverConfig) fillMasqHandler(hyConfig *server.Config) error {
 				IdleConnTimeout:       90 * time.Second,
 				TLSHandshakeTimeout:   10 * time.Second,
 				ExpectContinueTimeout: 1 * time.Second,
+			}
+		}
+		if u.Scheme == "unix" {
+			socketPath := u.Path
+			transport = &http.Transport{
+				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					return (&net.Dialer{
+						Timeout:   30 * time.Second,
+						KeepAlive: 30 * time.Second, // keep-alive still applies
+					}).DialContext(ctx, "unix", socketPath)
+				},
+				// use default configs from http.DefaultTransport
+				Proxy:                 http.ProxyFromEnvironment,
+				ForceAttemptHTTP2:     true,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			}
+			u = &url.URL{
+				Scheme: "http",
+				Host:   "unix",
+				Path:   "/",
 			}
 		}
 		handler = &httputil.ReverseProxy{
