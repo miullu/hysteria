@@ -847,16 +847,16 @@ func (c *serverConfig) fillMasqHandler(hyConfig *server.Config) error {
 				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 					return (&net.Dialer{
 						Timeout:   30 * time.Second,
-						KeepAlive: 30 * time.Second, // keep-alive still applies
+						KeepAlive: 30 * time.Second,
 					}).DialContext(ctx, "unix", socketPath)
 				},
-				// use default configs from http.DefaultTransport
 				Proxy:                 http.ProxyFromEnvironment,
-				ForceAttemptHTTP2:     true,
-				MaxIdleConns:          100,
-				IdleConnTimeout:       90 * time.Second,
+				MaxIdleConns:          50,
+				MaxIdleConnsPerHost:   50,
+				IdleConnTimeout:       60 * time.Second,
 				TLSHandshakeTimeout:   10 * time.Second,
 				ExpectContinueTimeout: 1 * time.Second,
+				MaxResponseHeaderBytes:4096,
 			}
 			u = &url.URL{
 				Scheme: "http",
@@ -874,6 +874,7 @@ func (c *serverConfig) fillMasqHandler(hyConfig *server.Config) error {
 				}
 			},
 			Transport: transport,
+			BufferPool: poolWrapper{},
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 				logger.Error("HTTP reverse proxy error", zap.Error(err))
 				w.WriteHeader(http.StatusBadGateway)
